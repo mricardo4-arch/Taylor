@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calculador y Graficador de Series de Taylor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/10.0.0/math.min.js"></script>
+
+<style>
+:root{
+/* 🎨 Paleta neutra y agradable */
+--bg:#e9ecef;
+--card:#f8f9fa;
+--accent:#6c757d;
+--muted:#495057;
+--point:#adb5bd;
+
+/* Colores para las curvas */
+--color-f:#6c757d;
+--color-p2:#8fbc8f;
+--color-p3:#4682b4;
+--color-p4:#b8860b;
+}
+
+html, body{
+height:100%; margin:0;
+background:var(--bg);
+font-family:Inter,system-ui;
+color:#333;
+}
+
+/* ---------------------------------------------------------------------- */
+/*  🔻 NUEVO LAYOUT: 3 COLUMNAS  🔻                                        */
+/* ---------------------------------------------------------------------- */
+main{
+max-width:1600px;
+margin:0 auto;
+display:grid;
+grid-template-columns: 420px 1fr 420px;
+gap:18px;
+padding:18px;
+}
+
+/* Tarjetas visuales */
+section.card{
+background: var(--card);
+padding:18px;
+border-radius:12px;
+box-shadow:0 4px 12px rgba(0,0,0,.15);
+}
+
+header.topHeader{
+background: var(--accent);
+color:white;
+text-align:center;
+font-size:2rem;
+padding:22px;
+font-weight: bold;
+border-bottom: 6px solid var(--point);
+text-shadow:1px 1px 3px rgba(0,0,0,.4);
+}
+
+h1{font-size:18px;margin:0 0 8px}
+label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+
+input[type="number"], input[type="text"]{
+width:100%; padding:9px; border-radius:8px; border:1px solid #bbb;
+background:white; color:inherit; font-size:14px
+}
+
+button{
+background:var(--accent);border:none;color:#fff;
+padding:9px 12px;border-radius:10px;cursor:pointer;margin-top:12px;transition:.2s;
+}
+button:hover{filter:brightness(1.1)}
+
+.row{display:flex;gap:8px;flex-wrap:wrap;}
+
+.small{font-size:13px;color:var(--muted)}
+
+canvas{
+background:white;border-radius:10px;width:100%;height:430px;display:block;
+}
+
+/* Info box scroll */
+#elementsArea{max-height:260px;overflow:auto;background:#ffffffcf;padding:8px;border-radius:8px;margin-top:10px;}
+table{width:100%;border-collapse:collapse;margin-top:12px;}
+td,th{padding:4px 6px;border-bottom:1px solid rgba(0,0,0,0.1);font-size:13px;} 
+th{color:var(--accent)}
+.warn{color:#dc3545;margin-top:8px;font-weight:bold}
+.legend-item{display:inline-flex;align-items:center;margin-right:15px;margin-top:4px}
+.legend-color{width:16px;height:3px;margin-right:5px;border:1px solid #333;}
+</style>
+</head>
+<body>
+
+<header class="topHeader">Calculador de Aproximaciones de Taylor (Centro: x=0)</header>
+
+<main>
+
+<!-- 📌 IZQUIERDA — INFORMACIÓN Y RESULTADOS -->
+<section class="card">
+<header><h1>Polinomios de Taylor Calculados</h1></header>
+<div id="elementsArea">
+<p>Los polinomios P2(x), P3(x) y P4(x) aparecerán aquí después de graficar.</p>
+</div>
+
+<hr style="opacity:.1;margin:16px 0">
+
+<header><h1>Análisis de Coincidencia</h1></header>
+<div id="analysisBox">
+<p>El análisis de coincidencia se mostrará aquí.</p>
+</div>
+
+</section>
+
+<!-- 🎯 CENTRO — GRÁFICA -->
+<section class="card">
+<header><h1>Gráfica de f(x) y Polinomios de Taylor</h1></header>
+<div style="margin-bottom: 10px;">
+    <div class="legend-item"><div class="legend-color" style="background: var(--color-f);"></div>f(x) Original</div>
+    <div class="legend-item"><div class="legend-color" style="background: var(--color-p2);"></div>P2(x)</div>
+    <div class="legend-item"><div class="legend-color" style="background: var(--color-p3);"></div>P3(x)</div>
+    <div class="legend-item"><div class="legend-color" style="background: var(--color-p4);"></div>P4(x)</div>
+</div>
+<canvas id="plotCanvas"></canvas>
+</section>
+
+<!-- 📌 DERECHA — ENTRADAS/CONTROLES -->
+<section class="card">
+<header><h1>Editor de Función Original</h1></header>
+<p class="small">Introduce la función f(x) y presiona "Graficar".</p>
+
+<label>Función Original f(x)</label>
+<input id="formulaInput" type="text" placeholder="p.ej. exp(2*x)" />
+
+<label>X Mínimo del Eje</label>
+<input id="XminInput" type="number" value="-2">
+
+<label>X Máximo del Eje</label>
+<input id="XmaxInput" type="number" value="2">
+
+<div class="row">
+<button id="generateBtn">Graficar y Analizar</button>
+</div>
+
+<p class="hint small">Funciones disponibles: sin, cos, tan, exp, log, sqrt, abs, pow...</p>
+<aside id="warnings" class="warn"></aside>
+</section>
+
+</main>
+
+
+<script>
+const qs = s => document.querySelector(s)
+const formulaInput = qs('#formulaInput')
+const XminInput = qs('#XminInput')
+const XmaxInput = qs('#XmaxInput')
+const generateBtn = qs('#generateBtn')
+const elementsArea = qs('#elementsArea')
+const warnings = qs('#warnings')
+const canvas = qs('#plotCanvas')
+const ctx = canvas.getContext('2d')
+const analysisBox = qs('#analysisBox')
+
+const TAYLOR_ORDERS = [2, 3, 4]
+const STEPS = 200
+let currentFunctions = {}
+let currentTaylorExpressions = {}
+
+const COLORS = {
+    f: getComputedStyle(document.documentElement).getPropertyValue('--color-f').trim(),
+    2: getComputedStyle(document.documentElement).getPropertyValue('--color-p2').trim(),
+    3: getComputedStyle(document.documentElement).getPropertyValue('--color-p3').trim(),
+    4: getComputedStyle(document.documentElement).getPropertyValue('--color-p4').trim(),
+}
+
+function factorial(n) {
+    if (n === 0 || n === 1) return 1
+    let res = 1
+    for (let i = 2; i <= n; i++) res *= i
+    return res
+}
+
+function getDerivative(expr, order) {
+    let deriv = math.parse(expr)
+    for (let i = 0; i < order; i++) {
+        deriv = math.derivative(deriv, 'x')
+    }
+    return deriv
+}
+
+function getTaylorPolynomials(f_expr) {
+    currentTaylorExpressions = {}
+    const fn_f = math.compile(f_expr)
+    const derivatives = {}
+
+    try {
+        derivatives[0] = fn_f.evaluate({x: 0})
+        if (!isFinite(derivatives[0])) throw new Error("f(0) no está definida o es infinita.")
+
+        for (let n = 1; n <= 4; n++) {
+            const deriv_expr = getDerivative(f_expr, n)
+            derivatives[n] = deriv_expr.evaluate({x: 0})
+            if (!isFinite(derivatives[n])) {
+                throw new Error(`Derivada ${n} en x=0 no está definida o es infinita.`)
+            }
+        }
+    } catch(e) {
+        throw new Error("Error en la evaluación de f(0) o sus derivadas: " + e.message)
+    }
+
+    let P_n_expr = `${derivatives[0]}`
+    for (const n of TAYLOR_ORDERS) {
+        const term = ` + (${derivatives[n]} / ${factorial(n)}) * x^${n}`
+        P_n_expr += term
+        currentTaylorExpressions[n] = math.simplify(P_n_expr).toString()
+    }
+    
+    currentFunctions.f = fn_f
+    for (const n of TAYLOR_ORDERS) {
+        currentFunctions[n] = math.compile(currentTaylorExpressions[n])
+    }
+
+    return derivatives
+}
+
+function renderTaylorExpressions(derivatives) {
+    if (!currentTaylorExpressions[2]) {
+        elementsArea.innerHTML = '<p>No se pudieron calcular las series de Taylor. Revise la función f(x) y sus derivadas en x=0.</p>'
+        return
+    }
+    
+    let html = `
+    <table>
+        <tr><th>Orden (n)</th><th>Término (f^(n)(0) / n!)</th><th>Polinomio (Pn(x))</th></tr>
+        <tr><td>0</td><td>${(derivatives[0]).toFixed(4)}</td><td>P0(x) = ${derivatives[0].toFixed(4)}</td></tr>
+    `
+    for (const n of TAYLOR_ORDERS) {
+        const coef = derivatives[n] / factorial(n)
+        html += `
+            <tr>
+                <td>${n}</td>
+                <td>${coef.toFixed(4)}</td>
+                <td>${currentTaylorExpressions[n]}</td>
+            </tr>
+        `
+    }
+    html += "</table>"
+    elementsArea.innerHTML = html
+}
+
+function drawPlot() {
+    if (!currentFunctions.f) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); 
+        return;
+    }
+
+    const W = canvas.offsetWidth, H = canvas.offsetHeight
+    const DPR = window.devicePixelRatio || 1
+    canvas.width = Math.floor(W * DPR)
+    canvas.height = Math.floor(H * DPR)
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
+    ctx.clearRect(0, 0, W, H)
+
+    const XMIN = Number(XminInput.value) || -3
+    const XMAX = Number(XmaxInput.value) || 3
+    if (XMAX <= XMIN) { warnings.textContent = 'Xmax debe ser mayor a Xmin.'; ctx.clearRect(0, 0, W, H); return }
+
+    const data = { f: [], 2: [], 3: [], 4: [] }
+    let allY = []
+    const stepX = (XMAX - XMIN) / STEPS
+
+    for (let i = 0; i <= STEPS; i++) {
+        const x = XMIN + i * stepX
+        const scope = { x: x }
+        
+        let yf = currentFunctions.f.evaluate(scope)
+        if (isFinite(yf)) { data.f.push({x, y: yf}); allY.push(yf) }
+        
+        for (const n of TAYLOR_ORDERS) {
+            let yn = currentFunctions[n].evaluate(scope)
+            if (isFinite(yn)) { data[n].push({x, y: yn}); allY.push(yn) }
+        }
+    }
+
+    if (allY.length === 0) { warnings.textContent = 'No se encontraron puntos válidos para graficar.'; ctx.clearRect(0, 0, W, H); return }
+    
+    const YMAX_RAW = Math.max(...allY)
+    const YMIN_RAW = Math.min(...allY)
+    const YPAD = (YMAX_RAW - YMIN_RAW) * 0.1 
+    const YMIN = YMIN_RAW - YPAD
+    const YMAX = YMAX_RAW + YPAD
+    
+    const PAD = 40
+    const PLOT_W = W - PAD * 2
+    const PLOT_H = H - PAD * 2
+    
+    ctx.strokeStyle = '#333'
+    ctx.lineWidth = 1
+    const yOrigin = YMIN <= 0 && YMAX >= 0 ? PAD + PLOT_H * (1 - (0 - YMIN) / (YMAX - YMIN)) : PAD + PLOT_H
+    
+    ctx.beginPath()
+    ctx.moveTo(PAD, yOrigin); ctx.lineTo(PAD + PLOT_W, yOrigin)
+    ctx.moveTo(PAD, PAD); ctx.lineTo(PAD, PAD + PLOT_H)
+    ctx.stroke()
+    
+    ctx.fillStyle = '#000'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right'
+    for (let i = 0; i <= 4; i++) {
+        const t = i / 4
+        const val = YMIN + (YMAX - YMIN) * (1 - t)
+        const y = PAD + PLOT_H * t
+        ctx.beginPath(); ctx.moveTo(PAD - 4, y); ctx.lineTo(PAD, y); ctx.stroke()
+        ctx.fillText(val.toFixed(2), PAD - 8, y + 3)
+    }
+
+    ctx.textAlign = 'center'
+    for (let i = 0; i <= 4; i++) {
+        const t = i / 4
+        const val = XMIN + (XMAX - XMIN) * t
+        const x = PAD + PLOT_W * t
+        ctx.beginPath(); ctx.moveTo(x, yOrigin); ctx.lineTo(x, yOrigin + 4); ctx.stroke()
+        ctx.fillText(val.toFixed(1), x, yOrigin + 15)
+    }
+
+    function drawCurve(dataPoints, color) {
+        if (dataPoints.length < 2) return
+        ctx.beginPath()
+        ctx.strokeStyle = color
+        ctx.lineWidth = 2.5
+        
+        const worldToPixelX = x => PAD + PLOT_W * (x - XMIN) / (XMAX - XMIN)
+        const worldToPixelY = y => PAD + PLOT_H * (1 - (y - YMIN) / (YMAX - YMIN))
+
+        ctx.moveTo(worldToPixelX(dataPoints[0].x), worldToPixelY(dataPoints[0].y))
+        for (let i = 1; i < dataPoints.length; i++) {
+            ctx.lineTo(worldToPixelX(dataPoints[i].x), worldToPixelY(dataPoints[i].y))
+        }
+        ctx.stroke()
+    }
+    
+    drawCurve(data[2], COLORS[2])
+    drawCurve(data[3], COLORS[3])
+    drawCurve(data[4], COLORS[4])
+    drawCurve(data.f, COLORS.f)
+}
+
+function analyzeApproximation() {
+    const F_FN = currentFunctions.f
+    const P2_FN = currentFunctions[2]
+    const P3_FN = currentFunctions[3]
+    const P4_FN = currentFunctions[4]
+
+    const TOLERANCE = 0.05
+
+    function findCoincidenceRange(fn_f, fn_p) {
+        let max_x = 0;
+        const CHECK_STEPS = 500;
+        const XMAX_CHECK = Math.max(Math.abs(Number(XminInput.value)), Math.abs(Number(XmaxInput.value))) * 5; 
+
+        for (let i = 1; i <= CHECK_STEPS; i++) {
+            const x = i * (XMAX_CHECK / CHECK_STEPS);
+            const scope = { x: x };
+            
+            const yf = fn_f.evaluate(scope);
+            const yp = fn_p.evaluate(scope);
+            
+            if (!isFinite(yf) || !isFinite(yp) || Math.abs(yf) < 1e-6) break;
+
+            const error = Math.abs((yf - yp) / yf);
+            
+            if (error > TOLERANCE) break;
+            max_x = x;
+        }
+        return max_x;
+    }
+    
+    const range2 = findCoincidenceRange(F_FN, P2_FN);
+    const range3 = findCoincidenceRange(F_FN, P3_FN);
+    const range4 = findCoincidenceRange(F_FN, P4_FN);
+    
+    const ranges = [range2, range3, range4].filter(r => r > 0);
+    const min_range = ranges.length > 0 ? Math.min(...ranges) : 0;
+
+    let html = `
+    <p>La tolerancia de coincidencia se establece en un error relativo menor al 5% ( |f(x)-Pn(x)| / |f(x)| < 0.05 ).</p>
+    <table>
+        <tr><th>Polinomio</th><th>Rango de Coincidencia (aprox.)</th><th>Punto de Diferencia Visible</th></tr>
+        <tr><td>P2(x)</td><td>[ -${range2.toFixed(2)}, ${range2.toFixed(2)} ]</td><td>|x| aprox. ${range2.toFixed(2)}</td></tr>
+        <tr><td>P3(x)</td><td>[ -${range3.toFixed(2)}, ${range3.toFixed(2)} ]</td><td>|x| aprox. ${range3.toFixed(2)}</td></tr>
+        <tr><td>P4(x)</td><td>[ -${range4.toFixed(2)}, ${range4.toFixed(2)} ]</td><td>|x| aprox. ${range4.toFixed(2)}</td></tr>
+    </table>
+    
+    <h3>Conclusiones:</h3>
+    <ol>
+        <li>
+            ¿En qué intervalo alrededor de x = 0 las curvas son prácticamente idénticas?
+            <p>El intervalo garantizado de coincidencia para todos es el del polinomio más bajo, P2(x): <b>[ -${min_range.toFixed(2)}, ${min_range.toFixed(2)} ]</b>.</p>
+        </li>
+        <li>
+            ¿A partir de qué valor de x la aproximación empieza a diferir visiblemente?
+            <p>P2 empieza a fallar alrededor de |x| ≈ ${range2.toFixed(2)}, mientras que P4 conserva coincidencia hasta |x| ≈ ${range4.toFixed(2)}.</p>
+        </li>
+        <li>
+            ¿Aumentar el orden mejora la aproximación?
+            <p>Sí. Un orden mayor extiende el intervalo donde la aproximación es precisa: Rango P2 < Rango P3 < Rango P4.</p>
+        </li>
+    </ol>
+    `
+    analysisBox.innerHTML = html;
+}
+
+function fullPlotAndAnalysis() {
+    warnings.textContent = ''
+    try {
+        const expr = formulaInput.value.trim()
+        if (!expr) { 
+            warnings.textContent = 'Introduce una función f(x) para iniciar el cálculo.'; 
+            currentFunctions = {};
+            elementsArea.innerHTML = '<p>Los polinomios P2(x), P3(x) y P4(x) aparecerán aquí después de graficar.</p>';
+            analysisBox.innerHTML = '<p>El análisis de coincidencia se mostrará aquí.</p>';
+            drawPlot(); 
+            return 
+        }
+        
+        const derivatives = getTaylorPolynomials(expr)
+        renderTaylorExpressions(derivatives)
+        drawPlot()
+        analyzeApproximation()
+    } catch(e) {
+        warnings.textContent = e.message
+        currentFunctions = {}
+        elementsArea.innerHTML = '<p>Error al calcular las series o graficar. Revise que f(x) y sus derivadas estén definidas en x=0.</p>'
+        analysisBox.innerHTML = '<p>Error al calcular las series o graficar. Revise que f(x) y sus derivadas estén definidas en x=0.</p>'
+        drawPlot()
+    }
+}
+
+generateBtn.addEventListener('click', fullPlotAndAnalysis)
+window.addEventListener('resize', drawPlot)
+document.addEventListener('DOMContentLoaded', drawPlot)
+</script>
+
+</body>
+</html>
+
